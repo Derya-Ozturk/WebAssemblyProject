@@ -1,0 +1,191 @@
+﻿@using Blazored.LocalStorage
+@using Core
+@using Entities.Dtos
+@using Flurl
+@using Flurl.Http
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using WebAssemblyProject.Authentication
+@using WebAssemblyProject.Component
+
+@page "/home"
+@layout MainLayout
+
+@attribute [Authorize(Roles = "Admin")]
+
+@inject IConfiguration _config
+@inject NotificationService _notice
+@inject ILocalStorageService _localStorage
+@inject NavigationManager _navi
+@inject AntDesign.ModalService ModelService;
+
+<AntDesign.Breadcrumb>
+    <AntDesign.BreadcrumbItem>Sales</AntDesign.BreadcrumbItem>
+    <AntDesign.BreadcrumbItem>Order</AntDesign.BreadcrumbItem>
+</AntDesign.Breadcrumb>
+
+<div style="height: 50px;"></div>
+<div><AntDesign.Icon Type="double-left" Theme="outline"/>  Order List</div>
+<div style="height: 70px;"></div>
+
+
+<GridRow>
+    <GridCol Span="6">
+        <AntDesign.Button Type="@AntDesign.ButtonType.Primary" Icon="@IconType.Outline.Search" OnClick="@ShowModal">Search</AntDesign.Button>
+    </GridCol>
+    <GridCol Span="8"></GridCol>
+    <GridCol Span="10">
+        <AntDesign.Pagination ShowSizeChanger
+                              OnShowSizeChange="OnShowSizeChange"
+                              DefaultCurrent="1"
+                              Current=@pageNumber
+                              PageSize=@pageSize
+                              Total=paginationList.TotalRecords
+                              ShowTotal="@showTotal"
+                              OnChange="OnChange" />
+    </GridCol>
+</GridRow>
+
+<div style="height: 50px;"></div>
+
+<GridRow Justify="center">
+    <AntDesign.GridCol Span="4"><h6>Order No</h6></AntDesign.GridCol>
+    <AntDesign.GridCol Span="4"><h6>Sales Representive</h6></AntDesign.GridCol>
+    <AntDesign.GridCol Span="7"><h6>Customer</h6></AntDesign.GridCol>
+    <AntDesign.GridCol Span="1"></AntDesign.GridCol>
+    <AntDesign.GridCol Span="5"><h6>Date Informations</h6></AntDesign.GridCol>
+    <AntDesign.GridCol Span="2"><h6>Creator</h6></AntDesign.GridCol>
+</GridRow>
+
+<AntList DataSource="@paginationList?.Data">
+    <ChildContent Context="item">
+        <AntDesign.GridRow Justify="center">
+            <AntDesign.GridCol Span="4">
+                <AntDesign.GridRow>
+                    @Guid.NewGuid().ToString().Substring(0, 8)
+                </AntDesign.GridRow>
+                <AntDesign.GridRow>
+                    <Tag Color="orange-inverse">Order pending confirmation</Tag>
+                </AntDesign.GridRow>
+                <AntDesign.GridRow>
+                    <Tag Color="red-inverse">Waiting Planning Confirmation</Tag>
+                </AntDesign.GridRow>
+            </AntDesign.GridCol>
+            <AntDesign.GridCol Span="4">
+                <GridRow><AntDesign.Image Width="150px" Height="100px" PreviewVisible="false" Src="@item.SalesRepresentive.PersonImage" /></GridRow>
+                <GridRow><Tag Color="#606060">@item.SalesRepresentive.SalesRepresentiveAbbr</Tag> @item.SalesRepresentive.SalesRepresentiveName</GridRow>
+            </AntDesign.GridCol>
+            <AntDesign.GridCol Span="7">
+                <GridRow>
+                    <Tag Color="blue-inverse">@item.CustomerNo</Tag> @item.Customer?.CustomerName
+                </GridRow>
+                <GridRow></GridRow>
+                <GridRow><AntDesign.Icon Type="home" Theme="twotone" Height="1.3em" Width="1.2em" />@item.Customer?.BillingAddress </GridRow>
+                <GridRow><AntDesign.Icon Type="car" Theme="twotone" Height="1.3em" Width="1.3em" />@item.Customer?.ShippingAddress</GridRow>
+            </AntDesign.GridCol>
+            <GridCol Span="1"></GridCol>
+            <AntDesign.GridCol Span="5">
+                <GridRow>Create Date:    @item.CreateDate</GridRow>
+                <GridRow>Customer Request Date:    @item.CustomerRequestDate</GridRow>
+                <GridRow>Revised Due Date:    @item.RevisedDueDate</GridRow>
+            </AntDesign.GridCol>
+            <AntDesign.GridCol Span="2">
+                <GridRow Justify="center"><AntDesign.Image Width="140px" Height="90px" Src="@item.Creator.PersonImage"></AntDesign.Image></GridRow>
+                <GridRow Justify="center">@item.Creator.UserName</GridRow>
+            </AntDesign.GridCol>
+        </AntDesign.GridRow>
+    </ChildContent>
+</AntList>
+
+<SearchComponent Visibility="_visible" VisibilityChanged="HandleVisibilityChanged" PaginationListChanged="HandleOrderListChanged" OrderDtoChanged="HandleOrderDtoChanged"></SearchComponent>
+
+@code
+{
+    bool _visible;
+
+    Func<PaginationTotalContext, string> showTotal = ctx => $"{ctx.Range.Item1}-{ctx.Range.Item2} of {ctx.Total} items";
+
+    int pageNumber = 1;
+    int pageSize = 10;
+
+    List<OrderDto> orderList = new();
+    OrderDto orderDto = new();
+
+    PaginationList<OrderDto> paginationList;
+    List<OrderDto> paginationListAfterSearch = new();
+    SearchComponent searchComponent1 = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetOrderList(pageNumber, pageSize, paginationList);
+    }
+
+    private async Task GetOrderList(int pageNumber, int pageSize, PaginationList<OrderDto> valPaginationList)
+    {
+        string? apiBaseUrl = _config["ApiSettings:BaseUrl"];
+
+        try
+        {
+            paginationList = new(orderList, pageNumber, pageSize, 0);
+
+            orderDto.PageNumber = pageNumber;
+            orderDto.PageSize = pageSize;
+
+            paginationList = await $"{apiBaseUrl}Order/orderList".PostJsonAsync(orderDto).ReceiveJson<PaginationList<OrderDto>>();
+
+        }
+
+        catch (Exception ex)
+        {
+            await _notice.Open(new NotificationConfig()
+                {
+                    NotificationType = AntDesign.NotificationType.Error,
+                    Message = "Error",
+                    Description = ex.Message
+                });
+        }
+
+    }
+
+    private void OnShowSizeChange(PaginationEventArgs args)
+    {
+        pageSize = args.PageSize;
+
+        StateHasChanged();
+    }
+
+    async Task OnChange(PaginationEventArgs args)
+    {
+
+        pageNumber = args.Page;
+        await GetOrderList(pageNumber, args.PageSize, paginationList);
+
+        StateHasChanged();
+    }
+
+    private void ShowModal()
+    {
+        _visible = !_visible;
+    }
+
+    //SearchComponent tarafında modal'daki değişiklikler
+    private void HandleVisibilityChanged(bool visible)
+    {
+        _visible = visible;
+    }
+
+
+    private void HandleOrderListChanged(PaginationList<OrderDto> orderDtoList)
+    {
+        paginationList = orderDtoList;
+
+        StateHasChanged();
+    }
+
+    private void HandleOrderDtoChanged(OrderDto changedOrderDto)
+    {
+        orderDto = changedOrderDto;
+
+        StateHasChanged();
+    }
+}

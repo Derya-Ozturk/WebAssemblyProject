@@ -1,0 +1,148 @@
+﻿@page "/"
+@layout LoginLayout
+@using Blazored.LocalStorage
+@using Entities.Dtos
+@using Microsoft.AspNetCore.Components.Authorization
+@using Flurl
+@using Flurl.Http
+@using WebAssemblyProject.Authentication
+@using WebAssemblyProject.Validations
+
+@inject IConfiguration _configuration
+@inject NavigationManager _navi
+@inject ILocalStorageService localStorage
+@inject HttpClient Http
+@inject AuthenticationStateProvider authStateProvider
+@inject NotificationService _notice
+
+@* @rendermode RenderMode.InteractiveWebAssembly *@
+
+<Spin Spinning=loading Size="large">
+    <Div Margin="Margin.IsAuto.OnX" Width="Width.Is50">
+        <Heading Size="HeadingSize.Is2" Margin="Margin.Is3.FromBottom" TextAlignment="TextAlignment.Center">
+            Sign in to your account
+        </Heading>
+
+        <Blazorise.Card Shadow="Shadow.Default">
+            <CardBody>
+                <EditForm Model="userDto" OnValidSubmit="OnButtonClicked">
+                    <FluentValidationValidator @ref="_fluentValidationValidator" />
+                    <Field>
+                        <FieldLabel>
+                            Email
+                        </FieldLabel>
+                        <FieldBody>
+                            <TextEdit Placeholder="name@blazorise.com" Role="TextRole.Email" @bind-Text="@userDto.Mail" />
+                            <ValidationMessage For="@(() => userDto.Mail)" />
+                        </FieldBody>
+                    </Field>
+                    <Field>
+                        <FieldLabel>
+                            Password
+                        </FieldLabel>
+                        <FieldBody>
+                            <TextEdit Placeholder="********" Role="TextRole.Password" autocomplete="new-password" @bind-Text="@userDto.Password" />
+                            <ValidationMessage For="@(() => userDto.Password)" />
+                        </FieldBody>
+                    </Field>
+                   @*  <Field Flex="Blazorise.Flex.Wrap.JustifyContent.Between">
+                        <Check TValue="bool">
+                            Remember me
+                        </Check>
+                        <Blazorise.Anchor To="#" TextColor="TextColor.Primary">
+                            Forgot your password?
+                        </Blazorise.Anchor>
+                    </Field> *@
+                    <Field>
+                        <Blazorise.Button Color="Blazorise.Color.Primary" Block Clicked="OnButtonClicked">
+                            Sign in
+                        </Blazorise.Button>
+                    </Field>
+                   @*  <Field>
+                        Don’t have an account yet? <Blazorise.Anchor To="#" TextColor="TextColor.Primary">Sign up</Blazorise.Anchor>
+                    </Field> *@
+                </EditForm>
+            </CardBody>
+        </Blazorise.Card>
+    </Div>
+</Spin>
+
+
+@code
+{
+    private bool loading = false;
+
+    private string? apiBaseUrl;
+
+    private UserDto userDto = new();
+
+    private FluentValidationValidator _fluentValidationValidator = new();
+
+
+    protected override void OnInitialized()
+    {
+        apiBaseUrl = _configuration["ApiSettings:BaseUrl"];
+    }
+
+    async Task OnButtonClicked()
+    {
+        try
+        {
+            if (await _fluentValidationValidator.ValidateAsync())
+            {
+                loading = true;
+
+                var request = await $"{apiBaseUrl}auth/LoginUser"
+                                                .PostJsonAsync(userDto)
+                                                .ReceiveJson<UserDto>();              
+
+                if (request.AuthenticateResult == true)
+                {
+                    await localStorage.SetItemAsync("token", request.AuthToken);
+                    await localStorage.SetItemAsync("expiry", request.AccessTokenExpireDate);
+                    await localStorage.SetItemAsync("refreshToken", request.RefreshToken);
+
+                    switch (request.Role)
+                    {
+                        case "Admin":
+                            _navi.NavigateTo("/home");
+                            break;
+                        case "User":
+                            _navi.NavigateTo("/user");
+                            break;
+
+                    }
+
+                    loading = false;
+                }
+
+                else
+                {
+                    loading = false;
+
+                    await _notice.Open(new NotificationConfig()
+                        {
+                            NotificationType = AntDesign.NotificationType.Error,
+                            Message = "Error",
+                            Description = "Your login information is incorrect, please try again."
+                        });
+                }
+
+                await authStateProvider.GetAuthenticationStateAsync();
+
+            }
+
+        }
+
+        catch (Exception ex)
+        {
+            await _notice.Open(new NotificationConfig()
+                {
+                    NotificationType = AntDesign.NotificationType.Error,
+                    Message = "Error",
+                    Description = ex.Message
+                });
+        }
+
+    }
+}

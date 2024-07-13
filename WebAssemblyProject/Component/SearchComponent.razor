@@ -1,0 +1,219 @@
+﻿@using Core
+@using Entities.Dtos
+@using Entities.Entities
+@using Flurl.Http
+@using Microsoft.AspNetCore.Authorization
+@using WebAssemblyProject.Pages
+@inject IConfiguration _config
+@inject NotificationService _notice
+
+@attribute [Authorize(Roles = "Admin")]
+
+<AntDesign.Modal Title="@("Search in Order List")"
+                 @bind-Visible=Visibility
+                 OnOk="@HandleOk"
+                 OnCancel="@(e => HandleCancel(e, Visibility))"
+                 Width="1000">
+    @FormTemplate()
+</AntDesign.Modal>
+
+@code {
+    [Parameter]
+    public bool Visibility { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> VisibilityChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<PaginationList<OrderDto>> PaginationListChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<OrderDto> OrderDtoChanged { get; set; }
+
+    private Form<OrderDto> _form;
+
+    OrderDto orderDto = new();
+
+    List<SalesRepresentiveDto> salesRepresentiveDto = new();
+    List<CustomerDto> customerDto = new();
+    List<UserDto> userDto = new();
+
+    int? _orderNo;
+    string? _selectedSalesValue;
+    string? _selectedCustomerValue;
+    string? _selectedUserValue;
+    DateTime? _selectedCreateDate;
+    DateTime? _selectedRequestDate;
+
+    int pageNumber = 1;
+    int pageSize = 10;
+
+    PaginationList<OrderDto> paginationList;
+    List<OrderDto> orderList = new();
+
+    RenderFragment FormTemplate()
+    {
+        return
+    @<AntDesign.Form Model="@orderDto"
+                         LabelColSpan="8"
+                         WrapperColSpan="16"
+                         OnFinish="OnFinish"
+                         OnFinishFailed="OnFinishFailed"
+                         @ref="@_form">
+        <AntDesign.Row Gutter="24">
+            <GridCol Span="12">
+                <FormItem Label="Customer No" Style="text-align:left">
+                    <AntDesign.Select DataSource="@customerDto"
+                                      @bind-Value="@_selectedCustomerValue"
+                                      TItemValue="string"
+                                      TItem="CustomerDto"
+                                      LabelName="@nameof(CustomerDto.CustomerName)"
+                                      ValueName="@nameof(CustomerDto.CustomerName)"
+                                      DefaultActiveFirstOption="false"
+                                      Placeholder="Select a customer">
+                    </AntDesign.Select>
+                </FormItem>
+            </GridCol>
+            <GridCol Span="12">
+                <FormItem Label="Order No">
+                    <Input Placeholder="Write an order no" @bind-Value="_orderNo" />
+                </FormItem>
+            </GridCol>
+        </AntDesign.Row>
+
+        <AntDesign.Row Gutter="24">
+            <GridCol Span="12">
+                <FormItem Label="Sales Repr. Name">
+                    <AntDesign.Select DataSource="@salesRepresentiveDto"
+                                      @bind-Value="@_selectedSalesValue"
+                                      TItemValue="string"
+                                      TItem="SalesRepresentiveDto"
+                                      LabelName="@nameof(SalesRepresentiveDto.SalesRepresentiveName)"
+                                      ValueName="@nameof(SalesRepresentiveDto.SalesRepresentiveName)"
+                                      DefaultActiveFirstOption="false"
+                                      Placeholder="Select a sales representive">
+                        <ItemTemplate Context="itemContext">
+                            <span>
+                                <Tag Color="#606060">@itemContext.SalesRepresentiveAbbr</Tag> @((itemContext as SalesRepresentiveDto).SalesRepresentiveName)
+                            </span>
+                        </ItemTemplate>
+                    </AntDesign.Select>
+                </FormItem>
+
+            </GridCol>
+            <GridCol Span="12">
+                <FormItem Label="User Name">
+                    <AntDesign.Select DataSource="@userDto"
+                                      @bind-Value="@_selectedUserValue"
+                                      TItemValue="string"
+                                      TItem="UserDto"
+                                      LabelName="@nameof(UserDto.UserName)"
+                                      ValueName="@nameof(UserDto.UserName)"
+                                      DefaultActiveFirstOption="false"
+                                      Placeholder="Select an user">
+                    </AntDesign.Select>
+
+                </FormItem>
+
+            </GridCol>
+        </AntDesign.Row>
+        <AntDesign.Row Gutter="24">
+            <GridCol Span="12">
+                <FormItem Label="Create Date">
+                    <AntDesign.DatePicker TValue="DateTime?" @bind-Value="@_selectedCreateDate" Format="dd/MM/yyyy" Picker="@DatePickerType.Date" Placeholder="@("Select a date")" />
+                </FormItem>
+            </GridCol>
+            <GridCol Span="12">
+                <FormItem Label="Request Date">
+                    <AntDesign.DatePicker TValue="DateTime?" @bind-Value="@_selectedRequestDate" Format="dd/MM/yyyy" Picker="@DatePickerType.Date" Placeholder="@("Select a date")" />
+                </FormItem>
+            </GridCol>
+
+        </AntDesign.Row>
+
+    </AntDesign.Form>
+    ;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            string? apiBaseUrl = _config["ApiSettings:BaseUrl"];
+
+            salesRepresentiveDto = await $"{apiBaseUrl}Order/salesRepresentiveList".GetJsonAsync<List<SalesRepresentiveDto>>();
+            customerDto = await $"{apiBaseUrl}Order/customerList".GetJsonAsync<List<CustomerDto>>();
+            userDto = await $"{apiBaseUrl}Order/userList".GetJsonAsync<List<UserDto>>();
+        }
+
+        catch (Exception ex)
+        {
+            await _notice.Open(new NotificationConfig()
+                {
+                    NotificationType = AntDesign.NotificationType.Error,
+                    Message = "Error",
+                    Description = ex.Message
+                });
+        }
+    }
+
+    private async Task HandleOk(MouseEventArgs e)
+    {
+
+        // await Task.Delay(1000);
+
+        OrderDto orderDto = new()
+            {
+                OrderNo = _orderNo,
+                CreateDate = _selectedCreateDate,
+                CustomerRequestDate = _selectedRequestDate,
+                SalesRepresentive = new SalesRepresentive()
+                {
+                    SalesRepresentiveName = _selectedSalesValue
+                },
+                Creator = new Entities.Entities.User()
+                {
+                    UserName = _selectedUserValue
+                },
+                Customer = new Customer()
+                {
+                    CustomerName = _selectedCustomerValue
+                }
+            };
+
+        paginationList = new(orderList, pageNumber, pageSize, 0);
+
+        orderDto.PageNumber = pageNumber;
+        orderDto.PageSize = pageSize;
+
+        string? apiBaseUrl = _config["ApiSettings:BaseUrl"];
+        paginationList = await $"{apiBaseUrl}Order/orderList".PostJsonAsync(orderDto).ReceiveJson<PaginationList<OrderDto>>();
+
+        await PaginationListChanged.InvokeAsync(paginationList);
+        await OrderDtoChanged.InvokeAsync(orderDto);
+
+
+        _form.Submit();
+
+    }
+
+    private async Task HandleCancel(MouseEventArgs e, bool visibility)
+    {
+        Visibility = visibility;
+        await VisibilityChanged.InvokeAsync(Visibility);
+
+        Console.WriteLine(e);
+    }
+
+    private void OnFinish(EditContext editContext)
+    {
+        Visibility = false;
+        VisibilityChanged.InvokeAsync(Visibility);
+    }
+
+    private void OnFinishFailed(EditContext editContext)
+    {
+        Console.WriteLine($"Failed");
+    }
+
+}

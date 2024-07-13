@@ -1,0 +1,13 @@
+﻿@using Microsoft.AspNetCore.Authorization
+@using WebAssemblyProject.Authentication
+
+@page "/finance"
+@layout MainLayout
+@attribute [Authorize(Roles = "Admin")]
+
+<h3>Finance Page</h3>
+
+@code {
+
+
+}
